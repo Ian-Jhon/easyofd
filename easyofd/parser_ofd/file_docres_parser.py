@@ -32,4 +32,5 @@ class DocumentResFileParser(FileParserBase):
                     "suffix": os.path.splitext(name)[-1].replace(".", ""),  # 文件后缀名
                     "fileName": name,
                 }
+        #print(info)
         return info

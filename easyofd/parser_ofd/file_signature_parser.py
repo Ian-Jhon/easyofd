@@ -5,7 +5,7 @@
 # E_MAIL: renoyuan@foxmail.com
 # AUTHOR: reno
 # NOTE: 签章解析
-
+#  改进SignatureFileParser函数(针对火车票): 将StampAnnot_res_key = "ofd:StampAnnot"设置为默认传入参数， 但对于签名标签名不为"ofd:StampAnnot"的情形，如火车票的为'ofd:Signature'，则从signature_xml_obj.keys()获取。
 from .file_parser_base import FileParserBase
 
 class SignaturesFileParser(FileParserBase):
@@ -38,19 +38,19 @@ class SignatureFileParser(FileParserBase):
     签章信息
     """
 
-    def __call__(self, prefix="", StampAnnot_res_key="ofd:StampAnnot"):
+    def __call__(self, prefix="", StampAnnot_res_key = "ofd:StampAnnot"):
         info = {}
         StampAnnot_res: list = []
-        #StampAnnot_res_key = "ofd:StampAnnot"
+        #StampAnnot_res_key = "ofd:StampAnnot" #对火车票：'ofd:Signature' 
 
         self.recursion_ext(self.xml_obj, StampAnnot_res, StampAnnot_res_key)
 
         SignedValue_res: list = []
         SignedValue_res_key = "ofd:SignedValue"
         self.recursion_ext(self.xml_obj, SignedValue_res, SignedValue_res_key)
-
-        # print("SignedValue_res", SignedValue_res)
-        # print("prefix", prefix)
+        #print("StampAnnot_res", StampAnnot_res)
+        #print("SignedValue_res", SignedValue_res)
+        #print("prefix", prefix)
         if StampAnnot_res:
             for i in StampAnnot_res:
                 info = {
@@ -59,5 +59,6 @@ class SignatureFileParser(FileParserBase):
                     "ID": i.get("@ID"),
                     "SignedValue": f"{prefix}/{SignedValue_res[0]}" if SignedValue_res else f"{prefix}/SignedValue.dat",
                 }
-
+        
+            
         return info

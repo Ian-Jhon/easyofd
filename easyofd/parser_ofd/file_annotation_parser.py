@@ -110,5 +110,6 @@ class AnnotationFileParser(FileParserBase):
                     },
                     
                 }
+        logger.warning('TextObject can not be parsed!')
         return info
 
