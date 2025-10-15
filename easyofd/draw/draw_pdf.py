@@ -5,6 +5,13 @@
 # E_MAIL: renoyuan@foxmail.com
 # AUTHOR: reno
 # NOTE:  绘制pdf
+"""
+1, 改进self.OP(针对页面)，从reportlab.lib.units 导入长度单位毫米，并将self.OP定义为1mm，是页面尺寸符合实际大小。
+2, 改进draw_chars函数(针对印章): 对有CTM的字符位置，改用reportlab中canvas.transform方法对pdf页面先进行变换再写入字符，使印章文字位置更准确。
+3, 改进draw_line函数(针对印章): 对彩色线条，通过提取StrokeColor得到正确的颜色。
+4, 改进draw_pdf函数(针对印章): 绘制顺序由文本(draw_chars)为先调整为线条(draw_line)为先，这样可以使印章线条在最下面但印章始终文字保持在最上面。
+5, 改进SignatureFileParser函数(针对火车票): 将StampAnnot_res_key = "ofd:StampAnnot"设置为默认传入参数，但对于签名标签名不为"ofd:StampAnnot"的情形，如火车票的为'ofd:Signature'，则从signature_xml_obj.keys()获取。
+"""
 import base64
 import os
 import re
@@ -84,7 +91,7 @@ class DrawPDF():
             rotate = 0
             move = 0
 
-        # print(f"resize is {resize}")
+        #print(f"resize is {resize}")
         char_pos = float(pos if pos else 0) + (float(offset if offset else 0) + move) * resize
         pos_list = []
         pos_list.append(char_pos)  # 放入第一个字符
@@ -105,7 +112,7 @@ class DrawPDF():
                         char_pos += float(offset_i) * resize
                         pos_list.append(char_pos)
                     elif (int(_no) > int(g_no + 2)) and g_no != None:
-                        # print(f"offset_i is {offset_i}")
+                        #print(f"offset_i is {offset_i}")
                         char_pos += float(offset_i) * resize
                         pos_list.append(char_pos)
 
@@ -120,13 +127,14 @@ class DrawPDF():
                 else:
                     char_pos += float(i) * resize
                 pos_list.append(char_pos)
-
+                
         return pos_list
 
     def draw_chars(self, canvas, text_list, fonts, page_size):
         """写入字符"""
         c = canvas
         for line_dict in text_list:
+            #print(line_dict.keys())
             # TODO 写入前对于正文内容整体序列化一次 方便 查看最后输入值 对于最终 格式先
             text = line_dict.get("text")
             font_info = fonts.get(line_dict.get("font"), {})
@@ -134,37 +142,39 @@ class DrawPDF():
                 font_name = font_info.get("FontName", "")
             else:
                 font_name = self.init_font
-            # print(f"font_name:{font_name}")
+            #print(f"font_name:{font_name}")
 
             # TODO 判断是否通用已有字体 否则匹配相近字体使用
             if font_name not in self.font_tool.FONTS:
                 font_name = self.font_tool.FONTS[0]
-
+            #print(f"已有字体 {self.font_tool.FONTS}")
             font = self.font_tool.normalize_font_name(font_name)
-            # print(f"font_name:{font_name} font:{font}")
+            #print(f"font_name:{font_name} font:{font}")
 
             try:
                 c.setFont(font, line_dict["size"] * self.OP)
             except KeyError as key_error:
-                logger.error(f"{key_error}")
                 font =  self.font_tool.FONTS[0]
                 c.setFont(font, line_dict["size"] * self.OP)
+                logger.error(f"{text}: font {key_error} is invalid and replaced with font {font}")
             # 原点在页面的左下角 
             color = line_dict.get("color", [0, 0, 0])
             if len(color) < 3:
                 color = [0, 0, 0]
-
+            
             c.setFillColorRGB(int(color[0]) / 255, int(color[1]) / 255, int(color[2]) / 255)
             c.setStrokeColorRGB(int(color[0]) / 255, int(color[1]) / 255, int(color[2]) / 255)
-
+            
             DeltaX = line_dict.get("DeltaX", "")
             DeltaY = line_dict.get("DeltaY", "")
-            # print("DeltaX",DeltaX)
+            
             X = line_dict.get("X", "")
             Y = line_dict.get("Y", "")
+            pos = line_dict.get("pos")
             CTM = line_dict.get("CTM", "")  # 因为ofd 增加这个字符缩放
             resizeX = 1
             resizeY = 1
+            
             # CTM =None # 有的数据不使用这个CTM
             if CTM and (CTMS:=CTM.split(" ")) and len(CTMS) == 6:
                 CTM_info = {
@@ -174,19 +184,17 @@ class DrawPDF():
                     "resizeY": float(CTMS[3]),
                     "moveX": float(CTMS[4]),
                     "moveY": float(CTMS[5]),
-
                 }
-
+                resizeX = CTM_info["resizeX"]
+                resizeY = CTM_info["resizeY"]
             else:
                 CTM_info ={}
-            x_list = self.cmp_offset(line_dict.get("pos")[0], X, DeltaX, text, CTM_info, dire="X")
-            y_list = self.cmp_offset(line_dict.get("pos")[1], Y, DeltaY, text, CTM_info, dire="Y")
-
-            # print("x_list",x_list)
-            # print("y_list",y_list)
-            # print("Y",page_size[3])
-            # print("x",page_size[2])
+            x_list = self.cmp_offset(pos[0], X, DeltaX, text, CTM_info, dire="X")
+            y_list = self.cmp_offset(pos[1], Y, DeltaY, text, CTM_info, dire="Y")
+            #if '255' in color:
+            #    print(f"text: {text}, (X,Y): ({X},{Y}), (X_page_size,Y_page_size): ({page_size[2]},{page_size[3]}), test_box_pos: {pos}, (x_list,y_list): ({x_list[0]},{y_list[0]})")
             # if line_dict.get("Glyphs_d") and  FontFilePath.get(line_dict["font"])  and font_f not in FONTS:
+            #if False:  # 对于自定义字体 写入字形
             if CTM: 
                 #print(f"text: {text}, CTM_info:",CTM_info)
                 c.saveState()
@@ -196,6 +204,7 @@ class DrawPDF():
             else:
                 if len(text) > len(x_list) or len(text) > len(y_list):
                     text = re.sub("[^\u4e00-\u9fa5]", "", text)
+                    #print(text)
                 try:
                     # 按行写入  最后一个字符y  算出来大于 y轴  最后一个字符x  算出来大于 x轴 
                     if y_list[-1] * self.OP > page_size[3] * self.OP or x_list[-1] * self.OP > page_size[2] * self.OP or \
@@ -203,8 +212,8 @@ class DrawPDF():
                         # print("line wtite")
                         x_p = abs(float(X)) * self.OP
                         y_p = abs(float(page_size[3]) - (float(Y))) * self.OP
-                        c.drawString(x_p, y_p, text, mode=0)  # mode=3 文字不可见 0可見
-
+                        c.drawString(x_p, y_p, text, mode=3)  # mode=3 文字不可见 0可見
+                        print(f"{text} is deleted from pdf!")
                         # text_write.append((x_p,  y_p, text))
                     # 按字符写入
                     else:
@@ -214,7 +223,6 @@ class DrawPDF():
                                 c.setFont(font, line_dict["size"] * self.OP * resizeX)
                                 _cahr_x = float(x_list[cahr_id]) * self.OP
                                 _cahr_y = (float(page_size[3]) - (float(y_list[cahr_id]))) * self.OP
-                                # print(_cahr_x,  _cahr_y, _cahr_)
                                 c.drawString(_cahr_x, _cahr_y, _cahr_, mode=0)  # mode=3 文字不可见 0可見
                             else:
                                 logger.debug(f"match {_cahr_} pos error \n{text} \n{x_list}")
@@ -223,7 +231,7 @@ class DrawPDF():
                     logger.error(f"{e}")
                     traceback.print_exc()
 
-    def compute_ctm(self, CTM,x1, y1, img_width, img_height):
+    def compute_ctm(self, CTM, x1, y1, img_width, img_height):
         """待定方法"""
         a,b,c,d,e,f = CTM.split(" ")
         a, b, c, d, e, f = float(a), float(b), float(c), float(d),float(e), float(f)
@@ -236,7 +244,7 @@ class DrawPDF():
         a = a/10
         d = d/10
         # 对左上角和右下角点进行变换
-        x1_new = a * x1 + c * y1 + (e )
+        x1_new = a * x1 + c * y1 + (e)
         y1_new = b * x1 + d * y1 + (f)
         x2_new = a * x2 + c * y2 + (e)
         y2_new = b * x2 + d * y2 + (f)
@@ -252,6 +260,7 @@ class DrawPDF():
     def draw_img(self, canvas, img_list, images, page_size):
         """写入图片"""
         c = canvas
+        #print('draw_img.img_list:',img_list)
         for img_d in img_list:
             image = images.get(img_d["ResourceID"])
 
@@ -295,7 +304,7 @@ class DrawPDF():
             else:
                 x_offset = 0
                 y_offset = 0
-
+                
                 x = (pos[0] + x_offset) * self.OP
                 y = (page_size[3] - (pos[1] + y_offset)) * self.OP
                 if wrap_pos:
@@ -303,20 +312,20 @@ class DrawPDF():
                     y = y - (wrap_pos[1] * self.OP)
                     w = img_d.get('pos')[2] * self.OP
                     h = -img_d.get('pos')[3] * self.OP
-
+                
                     # print(x, y, w, h)
                     c.drawImage(imgReade, x, y, w, h, 'auto')
                 elif pos:
-                    print(f"page_size == pos :{page_size == pos} ")
+                    print(f"page_size == pos is {page_size == pos} ")
                     x = pos[0] * self.OP
                     y = (page_size[3] - pos[1]) * self.OP
                     w = pos[2] * self.OP
                     h = -pos[3] * self.OP
-
+                
                     # print(x, y, w, h)
                     # print("pos",pos[0],pos[1],pos[2]* self.OP,pos[3]* self.OP)
                     # print(x2_new, -y2_new, w_new, h_new,)
-
+                
                     c.drawImage(imgReade, x, y, w, h, 'auto')
                     # c.drawImage(imgReade,x2_new, -y2_new, w_new, h_new, 'auto')
 
@@ -336,6 +345,7 @@ class DrawPDF():
                 # print("signatures_page_list",signatures_page_list)
                 for signature_info in signatures_page_list:
                     image = SealExtract()(b64=signature_info.get("SignedValue"))
+                    print("SignedValue:",image)
                     if not image:
                         logger.info(f"提取不到签章图片")
                         continue
@@ -547,8 +557,9 @@ class DrawPDF():
         for line in line_list:
             path = canvas.beginPath()
             Abbr = line.get("AbbreviatedData").split(" ")  # AbbreviatedData
-            #color = line.get("FillColor", [0, 0, 0])
             color = line.get("StrokeColor", "").split(" ") #StrokeColor String
+            #color = line.get("FillColor", [0,0,0])
+            print(f"line color: {color}")
             relu_list = match_mode(Abbr)
             # TODO 组合 relu_list 1 M L 直线 2 M B*n 三次贝塞尔线 3 M Q*n 二次贝塞尔线
 
@@ -637,8 +648,23 @@ class DrawPDF():
         """
         img_list = []
         for key, annotation in annota_info.items():
-            if annotation.get("AnnoType").get("type") == "Stamp":
+            #print('annot_key:',key, 'annot_val:',annotation)
+            #if annotation.get("AnnoType").get("type") == "Stamp":
+            #    pos = annotation.get("ImgageObject").get("Boundary","").split(" ")
+            #    pos = [float(i) for i in pos] if pos else []
+            #    wrap_pos = annotation.get("Appearance").get("Boundary","").split(" ")
+            #    wrap_pos = [float(i) for i in wrap_pos] if wrap_pos else []
+            #    CTM = annotation.get("ImgageObject").get("CTM","").split(" ")
+            #    CTM = [float(i) for i in CTM] if CTM else []
+            #    img_list.append({
+            #        "wrap_pos": wrap_pos,
+            #        "pos": pos,
+            #        "CTM": CTM,
+            #        "ResourceID": annotation.get("ImgageObject").get("ResourceID",""),
+            #    })
+            if annotation.get("ImgageObject").get("ResourceID"):
                 pos = annotation.get("ImgageObject").get("Boundary","").split(" ")
+                #print('pos',pos)
                 pos = [float(i) for i in pos] if pos else []
                 wrap_pos = annotation.get("Appearance").get("Boundary","").split(" ")
                 wrap_pos = [float(i) for i in wrap_pos] if wrap_pos else []
@@ -661,12 +687,13 @@ class DrawPDF():
             # print(1)
             fonts = doc.get("fonts")
             images = doc.get("images")
+            print(f"find {len(images)} images totally")
             default_page_size = doc.get("default_page_size")
             page_size_details = doc.get("page_size")
             print("page_size_details", page_size_details)
             signatures_page_id = doc.get("signatures_page_id")  # 签证信息
             annotation_info = doc.get("annotation_info")  # 注释信息
-
+            #print('annotation_info:',annotation_info)
             # 注册字体
             for font_id, font_v in fonts.items():
                 file_name = font_v.get("FontFile")
@@ -676,7 +703,7 @@ class DrawPDF():
             # text_write = []
             # print("doc.get(page_info)", len(doc.get("page_info")))
             for pg_no, page in doc.get("page_info").items():
-                print(f"pg_no: {pg_no} page_size_details: {page_size_details}")
+                #print(f"pg_no: {pg_no} page_size_details: {page_size_details}")
                 if len(page_size_details) > pg_no and page_size_details[pg_no]:
                     page_size = page_size_details[pg_no]
                 else:
@@ -685,18 +712,20 @@ class DrawPDF():
                 text_list = page.get("text_list")
                 img_list = page.get("img_list")
                 line_list = page.get("line_list")
-                # print("img_list",img_list)
+                #print("page_img_list",img_list)
+                #print("page_line_list",line_list)
 
                 c.setPageSize((page_size[2] * self.OP, page_size[3] * self.OP))
 
                 # 写入图片
                 if img_list:
                     self.draw_img(c, img_list, images, page_size)
+                    #print('doc_id',doc_id,'pg_no',pg_no,'img_list',img_list)
 
                 # 绘制线条
                 if line_list:
                     self.draw_line(c, line_list, page_size)
-
+                    
                 # 写入文本
                 if text_list:
                     self.draw_chars(c, text_list, fonts, page_size)
@@ -706,7 +735,8 @@ class DrawPDF():
                     self.draw_signature(c, signatures_page_id.get(pg_no), page_size)
                 # 绘制注释
                 if annotation_info and pg_no in annotation_info:
-                    self.draw_annotation(c, annotation_info.get(pg_no),images, page_size)
+                    #print('annotation_image:',annotation_info.get(pg_no).keys())
+                    self.draw_annotation(c, annotation_info.get(pg_no), images, page_size)
                 
                 # 页码判断逻辑 # print(doc_id,len(self.data))
                 if pg_no != len(doc.get("page_info")) - 1 and doc_id != len(self.data):
