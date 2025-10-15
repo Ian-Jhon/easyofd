@@ -300,21 +300,25 @@ class OFDParser(object):
             signatures_info = SignaturesFileParser(signatures_xml_obj)()
             if signatures_info:  # 获取签章具体信息
                 for _, signatures_cell in signatures_info.items():
-                    # print(signatures_info)
+                    #print(f"signatures_info: {signatures_info}")
                     BaseLoc = signatures_cell.get("BaseLoc")
                     signature_xml_obj = self.get_xml_obj(BaseLoc)
-                    # print(BaseLoc)
+                    #print(f"signature_xml_obj: {list(signature_xml_obj.keys())[0]}")
+                    #print(f"BaseLoc: {BaseLoc}")
                     prefix = BaseLoc.split("/")[0]
+                    #print(f"prefix: {prefix}")
+                    
                     signatures_info = SignatureFileParser(signature_xml_obj)(prefix=prefix)
                     if len(signatures_info)==0:
                         sign_key = list(signature_xml_obj.keys())[0]
                         signatures_info = SignatureFileParser(signature_xml_obj)(prefix=prefix, StampAnnot_res_key=sign_key)
-                    # print(signatures_info)
+                    #print(signatures_info)
                     logger.debug(f"signatures_info {signatures_info}")
                     PageRef = signatures_info.get("PageRef")
                     Boundary = signatures_info.get("Boundary")
                     SignedValue = signatures_info.get("SignedValue")
                     sing_page_no = page_id_map.get(PageRef)
+                    print('-'*10)
                     # print("self.file_tree",self.file_tree.keys)
                     # print(page_id_map,PageRef)
                     # print(SignedValue, self.get_xml_obj(SignedValue))
@@ -449,7 +453,7 @@ class OFDParser(object):
         save_xml = kwargs.get("save_xml", False)
         xml_name = kwargs.get("xml_name")
         self.file_tree = FileRead(self.ofdb64)(save_xml=save_xml, xml_name=xml_name)
-        # logger.info(self.file_tree)
+        #logger.info(self.file_tree)
         return self.parser()
 
 
