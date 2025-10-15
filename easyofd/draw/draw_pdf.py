@@ -637,7 +637,8 @@ class DrawPDF():
         """
         img_list = []
         for key, annotation in annota_info.items():
-            if annotation.get("AnnoType").get("type") == "Stamp":
+            #if annotation.get("AnnoType").get("type") == "Stamp":
+            if annotation.get("ImgageObject").get("ResourceID"):
                 pos = annotation.get("ImgageObject").get("Boundary","").split(" ")
                 pos = [float(i) for i in pos] if pos else []
                 wrap_pos = annotation.get("Appearance").get("Boundary","").split(" ")
